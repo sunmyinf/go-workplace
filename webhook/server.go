@@ -65,6 +65,7 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 
 	// Workplace webhook gets root to verify server
 	ws.mux.Handle("/", verifySignatureMiddleware(http.Handler(rootHandlerFunc)))
+	return ws
 }
 
 // HandleObjectFunc registers handler by object to Server instance.
