@@ -28,7 +28,7 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 	}
 
 	rootHandlerFunc := func(w http.ResponseWriter, r *http.Request) {
-		switch req.Method {
+		switch r.Method {
 		case http.MethodGet:
 			if err := r.ParseForm(); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
@@ -40,19 +40,19 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 				w.WriteHeader(http.StatusForbidden)
 			}
 		case http.MethodPost:
-			req, err := parsePostRequestBody(r)
+			rb, err := parsePostRequestBody(r)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
 
-			handler, exist := ws.objectHandlers[req.Object]
+			handler, exist := ws.objectHandlers[rb.Object]
 			if !exist {
 				// if object handler not registered, return ok status.
 				w.WriteHeader(http.StatusOK)
 				return
 			}
-			if err := handler(req); err != nil {
+			if err := handler(rb); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 			} else {
 				w.WriteHeader(http.StatusOK)
@@ -82,7 +82,7 @@ func (ws *Server) HandleFunc(pattern string, handler func(w http.ResponseWriter,
 // ListenAndServe listens on the TCP network address srv.Addr and then
 // calls Serve to handle requests on incoming connections.
 func (ws *Server) ListenAndServe(addr string) error {
-	sderver := &http.Server{Addr: addr, Handler: ws.mux}
+	server := &http.Server{Addr: addr, Handler: ws.mux}
 	return server.ListenAndServe()
 }
 
@@ -100,6 +100,6 @@ func parsePostRequestBody(r *http.Request) (decode.RequestBody, error) {
 		return request, error
 	}
 
-	err := json.Unmarshal(bufBody, &request)
+	err := json.Unmarshal(bufBody.Bytes(), &request)
 	return request, err
 }
