@@ -2,7 +2,7 @@ package webhook
 
 import (
 	"bytes"
-	"json"
+	"encoding/json"
 	"net/http"
 
 	"github.com/sunmyinf/go-workplace/decode"
