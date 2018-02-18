@@ -14,7 +14,7 @@ const (
 )
 
 type Data struct {
-	Object      object `json: object`
+	Object      Object `json: object`
 	CallbackUrl string `json: callback_url`
 	Active      bool   `json: active`
 }
