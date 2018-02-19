@@ -2,8 +2,13 @@ package webhook
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/sunmyinf/go-workplace/decode"
 )
@@ -63,8 +68,9 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 		return
 	}
 
-	// Workplace webhook gets root to verify server
-	ws.mux.Handle("/", verifySignatureMiddleware(http.HandlerFunc(rootHandlerFunc)))
+	// Workplace webhook gets root to verify server.
+	// And posts root to callback.
+	ws.mux.Handle("/", ws.verifySignatureMiddleware(http.HandlerFunc(rootHandlerFunc)))
 	return ws
 }
 
@@ -86,12 +92,41 @@ func (ws *Server) ListenAndServe(addr string) error {
 	return server.ListenAndServe()
 }
 
-func verifySignatureMiddleware(nextFunc http.HandlerFunc) http.Handler {
+func (ws *Server) verifySignatureMiddleware(nextFunc http.HandlerFunc) http.Handler {
 	next := http.Handler(nextFunc)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// TODO: verify process
+		bufBody := bytes.Buffer{}
+		if _, err := bufBody.ReadFrom(r.Body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if err := verifySignature(r.Header.Get("X-Hub-Signature"), ws.Secret, bufBody.Bytes()); err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func verifySignature(sig, secret string, key []byte) error {
+	if sig == "" {
+		return errors.New("error: signature is empty")
+	}
+
+	elements := strings.Split(sig, "=")
+	if len(elements) < 2 {
+		return errors.New("errors: invalid signature")
+	}
+
+	signatureHash := elements[1]
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(secret))
+	expectedHash := hex.EncodeToString(mac.Sum(nil))
+
+	if signatureHash != expectedHash {
+		return errors.New("error: signature hash do not match expected hash")
+	}
+	return nil
 }
 
 func parsePostRequestBody(r *http.Request) (decode.RequestBody, error) {
