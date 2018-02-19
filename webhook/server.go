@@ -34,8 +34,8 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			if r.Form.Get("hub.mode") == "subscription" && r.Form.Get("hub.verify_token") == verificationToken {
-				w.Write([]byte{r.Form.Get("hub.challenge")})
+			if r.FormValue("hub.mode") == "subscription" && r.FormValue("hub.verify_token") == verificationToken {
+				w.Write([]byte(r.FormValue("hub.challenge")))
 			} else {
 				w.WriteHeader(http.StatusForbidden)
 			}
@@ -46,7 +46,7 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 				return
 			}
 
-			handler, exist := ws.objectHandlers[rb.Object]
+			handler, exist := ws.objectHandlers[rb.Data[0].Object]
 			if !exist {
 				// if object handler not registered, return ok status.
 				w.WriteHeader(http.StatusOK)
@@ -64,7 +64,7 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 	}
 
 	// Workplace webhook gets root to verify server
-	ws.mux.Handle("/", verifySignatureMiddleware(http.Handler(rootHandlerFunc)))
+	ws.mux.Handle("/", verifySignatureMiddleware(http.HandlerFunc(rootHandlerFunc)))
 	return ws
 }
 
@@ -86,7 +86,8 @@ func (ws *Server) ListenAndServe(addr string) error {
 	return server.ListenAndServe()
 }
 
-func verifySignatureMiddleware(next http.Handler) http.Handler {
+func verifySignatureMiddleware(nextFunc http.HandlerFunc) http.Handler {
+	next := http.Handler(nextFunc)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// TODO: verify process
 		next.ServeHTTP(w, r)
@@ -97,7 +98,7 @@ func parsePostRequestBody(r *http.Request) (decode.RequestBody, error) {
 	request := decode.RequestBody{}
 	bufBody := bytes.Buffer{}
 	if _, err := bufBody.ReadFrom(r.Body); err != nil {
-		return request, error
+		return request, err
 	}
 
 	err := json.Unmarshal(bufBody.Bytes(), &request)
