@@ -77,6 +77,9 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 // HandleObjectFunc registers handler by object to Server instance.
 // If handler of specified object was registered, override it by new one.
 func (ws *Server) HandleObjectFunc(object decode.Object, objectHandler func(decode.RequestBody) error) {
+	if ws.objectHandlers == nil {
+		ws.objectHandlers = make(map[decode.Object]func(decode.RequestBody) error)
+	}
 	ws.objectHandlers[object] = objectHandler
 }
 
