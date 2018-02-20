@@ -70,7 +70,7 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 
 	// Workplace webhook gets root to verify server.
 	// And posts root to callback.
-	ws.mux.Handle("/", ws.verifySignatureMiddleware(http.HandlerFunc(rootHandlerFunc)))
+	ws.mux.HandleFunc("/", ws.verifySignatureMiddleware(http.HandlerFunc(rootHandlerFunc)))
 	return ws
 }
 
@@ -95,9 +95,9 @@ func (ws *Server) ListenAndServe(addr string) error {
 	return server.ListenAndServe()
 }
 
-func (ws *Server) verifySignatureMiddleware(nextFunc http.HandlerFunc) http.Handler {
+func (ws *Server) verifySignatureMiddleware(nextFunc http.HandlerFunc) func(http.ResponseWriter, *http.Request) {
 	next := http.Handler(nextFunc)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		bufBody := bytes.Buffer{}
 		if _, err := bufBody.ReadFrom(r.Body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -108,7 +108,7 @@ func (ws *Server) verifySignatureMiddleware(nextFunc http.HandlerFunc) http.Hand
 			return
 		}
 		next.ServeHTTP(w, r)
-	})
+	}
 }
 
 func verifySignature(sig, secret string, key []byte) error {
