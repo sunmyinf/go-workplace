@@ -39,7 +39,7 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			if r.FormValue("hub.mode") == "subscription" && r.FormValue("hub.verify_token") == verificationToken {
+			if r.FormValue("hub.mode") == "subscribe" && r.FormValue("hub.verify_token") == verificationToken {
 				w.Write([]byte(r.FormValue("hub.challenge")))
 			} else {
 				w.WriteHeader(http.StatusForbidden)
