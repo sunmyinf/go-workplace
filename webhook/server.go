@@ -3,7 +3,7 @@ package webhook
 import (
 	"bytes"
 	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -111,7 +111,7 @@ func (ws *Server) verifySignatureMiddleware(nextFunc http.HandlerFunc) func(http
 	}
 }
 
-func verifySignature(sig, secret string, key []byte) error {
+func verifySignature(sig, secret string, message []byte) error {
 	if sig == "" {
 		return errors.New("error: signature is empty")
 	}
@@ -120,10 +120,10 @@ func verifySignature(sig, secret string, key []byte) error {
 	if len(elements) < 2 {
 		return errors.New("errors: invalid signature")
 	}
-
 	signatureHash := elements[1]
-	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte(secret))
+
+	mac := hmac.New(sha1.New, []byte(secret))
+	mac.Write(message)
 	expectedHash := hex.EncodeToString(mac.Sum(nil))
 
 	if signatureHash != expectedHash {
