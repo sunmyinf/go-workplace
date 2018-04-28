@@ -92,7 +92,7 @@ func (ws *Server) rootHandlerFunc(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Switch handler for object
-		handler, exist := ws.objectHandlers[rb.Data[0].Object]
+		handler, exist := ws.objectHandlers[rb.Object]
 		if !exist {
 			// if object handler not registered, return ok status.
 			w.WriteHeader(http.StatusOK)
