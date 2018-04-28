@@ -32,45 +32,9 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 		mux:               http.NewServeMux(),
 	}
 
-	rootHandlerFunc := func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			if err := r.ParseForm(); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			if r.FormValue("hub.mode") == "subscribe" && r.FormValue("hub.verify_token") == verificationToken {
-				w.Write([]byte(r.FormValue("hub.challenge")))
-			} else {
-				w.WriteHeader(http.StatusForbidden)
-			}
-		case http.MethodPost:
-			rb, err := parsePostRequestBody(r)
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-
-			handler, exist := ws.objectHandlers[rb.Data[0].Object]
-			if !exist {
-				// if object handler not registered, return ok status.
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			if err := handler(rb); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-			} else {
-				w.WriteHeader(http.StatusOK)
-			}
-		default:
-			w.WriteHeader(http.StatusForbidden)
-		}
-		return
-	}
-
-	// Workplace webhook gets root to verify server.
-	// And posts root to callback.
-	ws.mux.HandleFunc("/", ws.verifySignatureMiddleware(http.HandlerFunc(rootHandlerFunc)))
+	// Workplace webhook gets root to verify server
+	// and posts root to callback.
+	ws.mux.HandleFunc("/", ws.rootHandlerFunc)
 	return ws
 }
 
@@ -95,9 +59,21 @@ func (ws *Server) ListenAndServe(addr string) error {
 	return server.ListenAndServe()
 }
 
-func (ws *Server) verifySignatureMiddleware(nextFunc http.HandlerFunc) func(http.ResponseWriter, *http.Request) {
-	next := http.Handler(nextFunc)
-	return func(w http.ResponseWriter, r *http.Request) {
+func (ws *Server) rootHandlerFunc(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		// Workplace webhook gets with some quereis to verify server
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if r.FormValue("hub.mode") == "subscribe" && r.FormValue("hub.verify_token") == ws.VerificationToken {
+			w.Write([]byte(r.FormValue("hub.challenge")))
+		} else {
+			w.WriteHeader(http.StatusForbidden)
+		}
+	case http.MethodPost:
+		// Validate request payloads
 		bufBody := bytes.Buffer{}
 		if _, err := bufBody.ReadFrom(r.Body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -107,11 +83,33 @@ func (ws *Server) verifySignatureMiddleware(nextFunc http.HandlerFunc) func(http
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		next.ServeHTTP(w, r)
+
+		// Parse payloads
+		rb, err := parsePostRequestBody(r)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// Switch handler for object
+		handler, exist := ws.objectHandlers[rb.Data[0].Object]
+		if !exist {
+			// if object handler not registered, return ok status.
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if err := handler(rb); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+	default:
+		w.WriteHeader(http.StatusForbidden)
 	}
+	return
 }
 
-func verifySignature(sig, secret string, message []byte) error {
+func verifySignature(sig, secret string, payload []byte) error {
 	if sig == "" {
 		return errors.New("error: signature is empty")
 	}
@@ -123,7 +121,7 @@ func verifySignature(sig, secret string, message []byte) error {
 	signatureHash := elements[1]
 
 	mac := hmac.New(sha1.New, []byte(secret))
-	mac.Write(message)
+	mac.Write(payload)
 	expectedHash := hex.EncodeToString(mac.Sum(nil))
 
 	if signatureHash != expectedHash {
