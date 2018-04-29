@@ -34,7 +34,7 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 
 	// Workplace webhook gets webhook to verify server
 	// and posts webhook to callback.
-	ws.mux.HandleFunc("/", ws.webhookHandlerFunc)
+	ws.mux.HandleFunc("/webhook", ws.webhookHandlerFunc)
 	return ws
 }
 
