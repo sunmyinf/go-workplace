@@ -23,7 +23,7 @@ type Server struct {
 }
 
 // NewServer return workplace webhook server instance.
-// Handler has been registered to it as root '/' pattern by default.
+// Handler has been registered to it as '/webhook' pattern by default.
 func NewServer(secret, accessToken, verificationToken string) *Server {
 	ws := &Server{
 		Secret:            secret,
@@ -32,9 +32,9 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 		mux:               http.NewServeMux(),
 	}
 
-	// Workplace webhook gets root to verify server
-	// and posts root to callback.
-	ws.mux.HandleFunc("/", ws.rootHandlerFunc)
+	// Workplace webhook gets webhook to verify server
+	// and posts webhook to callback.
+	ws.mux.HandleFunc("/", ws.webhookHadnlerFunc)
 	return ws
 }
 
@@ -59,7 +59,7 @@ func (ws *Server) ListenAndServe(addr string) error {
 	return server.ListenAndServe()
 }
 
-func (ws *Server) rootHandlerFunc(w http.ResponseWriter, r *http.Request) {
+func (ws *Server) webhookHandlerFunc(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		// Workplace webhook gets with some quereis to verify server
