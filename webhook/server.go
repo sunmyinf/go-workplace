@@ -85,20 +85,20 @@ func (ws *Server) webhookHandlerFunc(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Parse payloads
-		rb, err := parsePostRequestBody(r)
-		if err != nil {
+		reqBody := decode.RequestBody{}
+		if err := json.Unmarshal(bufBody.Bytes(), &reqBody); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		// Switch handler for object
-		handler, exist := ws.objectHandlers[rb.Object]
+		handler, exist := ws.objectHandlers[reqBody.Object]
 		if !exist {
 			// if object handler not registered, return ok status.
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		if err := handler(rb); err != nil {
+		if err := handler(reqBody); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 		} else {
 			w.WriteHeader(http.StatusOK)
@@ -128,15 +128,4 @@ func verifySignature(sig, secret string, payload []byte) error {
 		return errors.New("error: signature hash do not match expected hash")
 	}
 	return nil
-}
-
-func parsePostRequestBody(r *http.Request) (decode.RequestBody, error) {
-	request := decode.RequestBody{}
-	bufBody := bytes.Buffer{}
-	if _, err := bufBody.ReadFrom(r.Body); err != nil {
-		return request, err
-	}
-
-	err := json.Unmarshal(bufBody.Bytes(), &request)
-	return request, err
 }
