@@ -18,7 +18,7 @@ type Server struct {
 	Secret            string
 	AccessToken       string
 	VerificationToken string
-	objectHandlers    map[decode.Object]func(decode.RequestBody) error
+	objectHandlers    map[string]map[decode.Object]func(decode.RequestBody) error
 	mux               *http.ServeMux
 }
 
@@ -33,18 +33,20 @@ func NewServer(secret, accessToken, verificationToken string) *Server {
 	}
 
 	// Workplace webhook gets webhook to verify server
-	// and posts webhook to callback.
 	ws.mux.HandleFunc("/webhook", ws.webhookHandlerFunc)
 	return ws
 }
 
 // HandleObjectFunc registers handler by object to Server instance.
 // If handler of specified object was registered, override it by new one.
-func (ws *Server) HandleObjectFunc(object decode.Object, objectHandler func(decode.RequestBody) error) {
+func (ws *Server) HandleObjectFunc(pattern string, object decode.Object, objectHandler func(decode.RequestBody) error) {
 	if ws.objectHandlers == nil {
-		ws.objectHandlers = make(map[decode.Object]func(decode.RequestBody) error)
+		ws.objectHandlers = make(map[string]map[decode.Object]func(decode.RequestBody) error)
 	}
-	ws.objectHandlers[object] = objectHandler
+	if ws.objectHandlers[pattern] == nil {
+		ws.objectHandlers[pattern] = make(map[decode.Object]func(decode.RequestBody) error)
+	}
+	ws.objectHandlers[pattern][object] = objectHandler
 }
 
 // HandleFunc registers the handler function for the given pattern.
@@ -55,6 +57,9 @@ func (ws *Server) HandleFunc(pattern string, handler func(w http.ResponseWriter,
 // ListenAndServe listens on the TCP network address srv.Addr and then
 // calls Serve to handle requests on incoming connections.
 func (ws *Server) ListenAndServe(addr string) error {
+	for pattern, _ := range ws.objectHandlers {
+		ws.mux.HandleFunc(pattern, ws.getObjectHandlerFunc(pattern))
+	}
 	server := &http.Server{Addr: addr, Handler: ws.mux}
 	return server.ListenAndServe()
 }
@@ -72,41 +77,57 @@ func (ws *Server) webhookHandlerFunc(w http.ResponseWriter, r *http.Request) {
 		} else {
 			w.WriteHeader(http.StatusForbidden)
 		}
-	case http.MethodPost:
-		// Validate request payloads
-		bufBody := bytes.Buffer{}
-		if _, err := bufBody.ReadFrom(r.Body); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if err := verifySignature(r.Header.Get("X-Hub-Signature"), ws.Secret, bufBody.Bytes()); err != nil {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-
-		// Parse payloads
-		reqBody := decode.RequestBody{}
-		if err := json.Unmarshal(bufBody.Bytes(), &reqBody); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		// Switch handler for object
-		handler, exist := ws.objectHandlers[reqBody.Object]
-		if !exist {
-			// if object handler not registered, return ok status.
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		if err := handler(reqBody); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-		} else {
-			w.WriteHeader(http.StatusOK)
-		}
 	default:
 		w.WriteHeader(http.StatusForbidden)
 	}
 	return
+}
+
+func (ws *Server) getObjectHandlerFunc(pattern string) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			// Validate request payloads
+			bufBody := bytes.Buffer{}
+			if _, err := bufBody.ReadFrom(r.Body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if err := verifySignature(r.Header.Get("X-Hub-Signature"), ws.Secret, bufBody.Bytes()); err != nil {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+
+			// Parse payloads
+			reqBody := decode.RequestBody{}
+			if err := json.Unmarshal(bufBody.Bytes(), &reqBody); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			// Switch handler by pattern and object
+			objectHandlerMap, exist := ws.objectHandlers[pattern]
+			if !exist {
+				// if pattern not registered, return ok status.
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			handler, exist := objectHandlerMap[reqBody.Object]
+			if !exist {
+				// if object handler not registered, return ok status.
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if err := handler(reqBody); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+			} else {
+				w.WriteHeader(http.StatusOK)
+			}
+		default:
+			w.WriteHeader(http.StatusForbidden)
+		}
+		return
+	})
 }
 
 func verifySignature(sig, secret string, payload []byte) error {
